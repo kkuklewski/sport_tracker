@@ -1,0 +1,5 @@
+activities.db
+*:Zone.Identifier
+.claude/settings.local.json
+__pycache__/
+*.pyc
