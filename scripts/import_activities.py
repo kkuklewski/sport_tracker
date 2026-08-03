@@ -5,63 +5,11 @@ Usage: python3 scripts/import_activities.py [path/to/Activities.csv]
 Defaults to Activities.csv in the project root.
 """
 import csv
-import sqlite3
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
-DB_PATH = ROOT / "activities.db"
-
-# CSV header -> sqlite column name
-COLUMN_MAP = {
-    "Activity Type": "activity_type",
-    "Date": "date",
-    "Favorite": "favorite",
-    "Title": "title",
-    "Distance": "distance_km",
-    "Calories": "calories",
-    "Time": "duration",
-    "Avg HR": "avg_hr",
-    "Max HR": "max_hr",
-    "Aerobic TE": "aerobic_te",
-    "Avg Bike Cadence": "avg_bike_cadence",
-    "Max Bike Cadence": "max_bike_cadence",
-    "Avg Speed": "avg_speed",
-    "Max Speed": "max_speed",
-    "Total Ascent": "total_ascent",
-    "Total Descent": "total_descent",
-    "Avg Stride Length": "avg_stride_length",
-    "Avg GAP": "avg_gap",
-    "Normalized Power® (NP®)": "normalized_power",
-    "Training Stress Score®": "training_stress_score",
-    "Avg Power": "avg_power",
-    "Max Power": "max_power",
-    "Steps": "steps",
-    "Decompression": "decompression",
-    "Best Lap Time": "best_lap_time",
-    "Number of Laps": "number_of_laps",
-    "Avg Resp": "avg_resp",
-    "Min Resp": "min_resp",
-    "Max Resp": "max_resp",
-    "Moving Time": "moving_time",
-    "Elapsed Time": "elapsed_time",
-    "Min Elevation": "min_elevation",
-    "Max Elevation": "max_elevation",
-}
-
-
-def get_connection():
-    conn = sqlite3.connect(DB_PATH)
-    columns_sql = ",\n            ".join(f"{col} TEXT" for col in COLUMN_MAP.values())
-    conn.execute(
-        f"""
-        CREATE TABLE IF NOT EXISTS activities (
-            {columns_sql},
-            UNIQUE(date, title)
-        )
-        """
-    )
-    return conn
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from db import COLUMN_MAP, ROOT, describe, get_connection, insert_activity
 
 
 def import_csv(csv_path: Path) -> tuple[list[str], int]:
@@ -77,14 +25,8 @@ def import_csv(csv_path: Path) -> tuple[list[str], int]:
             if not row.get("Date"):
                 continue
             values = {COLUMN_MAP[k]: v for k, v in row.items() if k in COLUMN_MAP}
-            cols = ", ".join(values.keys())
-            placeholders = ", ".join(f":{c}" for c in values.keys())
-            cur.execute(
-                f"INSERT OR IGNORE INTO activities ({cols}) VALUES ({placeholders})",
-                values,
-            )
-            if cur.rowcount:
-                new_rows.append(f"{values['date']} - {values['activity_type']} - {values['title']}")
+            if insert_activity(cur, values):
+                new_rows.append(describe(values))
             else:
                 skipped += 1
 

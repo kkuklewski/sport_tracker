@@ -3,3 +3,10 @@ activities.db
 .claude/settings.local.json
 __pycache__/
 *.pyc
+
+# Garmin credentials — never commit these
+.env
+
+# Local environment
+.venv/
+venv/
