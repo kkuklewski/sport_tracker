@@ -12,10 +12,20 @@ Roughly 80–90 km per day, three consecutive days.
 Set 2026-08-03. Four training weeks available (Aug 3 – Aug 30), then a
 3-day taper (Aug 31 – Sep 2).
 
+## Intermediate goal — weight
+
+**92 kg → 86 kg** (188 cm; BMI 26.0 → 24.3). Set 2026-08-03.
+History shows this works: Nov–Dec 2025 dropped ~10 kg on regular
+strength/mobility gym sessions almost every other day. The current weekly
+structure already serves this goal — no extra volume needed, consistency is
+the lever.
+
 ## Target weekly structure
 
-- **2× mobility** — already coached externally. Schedule the slot, never
-  prescribe the content.
+- **2× mobility** — in practice strength training with mobility elements
+  (the Nov–Dec 2025 format that drove the -10 kg cut), not light stretching.
+  Content is coached externally. Schedule the slot, never prescribe the
+  content.
 - **2× bike** — alternate gravel and MTB. One is the weekly long ride, the
   other is short/easy Zone 2.
 - **Running** — optional, purely by feel. Mostly relaxation; occasional hard
