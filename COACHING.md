@@ -28,3 +28,11 @@ When asked what to train (today, tomorrow, next), always follow this order:
 - Running is by feel and never prescribed as a workout during this build.
 - Jacuzzi is available for recovery days — fine to suggest after hard or
   long sessions.
+
+## Weight tracking
+
+There is an intermediate weight goal (see GOALS.md). Whenever the user
+mentions their current weight, call `log_weight` to record it. When
+coaching, check `get_weight_history` occasionally and note the trend toward
+the target — but never prescribe diet; consistency of the existing weekly
+structure is the lever.

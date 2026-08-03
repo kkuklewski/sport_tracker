@@ -87,6 +87,62 @@ def get_goals() -> str:
     return GOALS_PATH.read_text(encoding="utf-8")
 
 
+def _weight_connection():
+    """Same database file as activities; separate table for body weight."""
+    conn = get_connection()
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS weight (
+            date TEXT PRIMARY KEY,
+            weight_kg REAL NOT NULL
+        )
+        """
+    )
+    return conn
+
+
+@mcp.tool
+def log_weight(weight_kg: float, date: str = "") -> str:
+    """Record body weight in kg. Date is YYYY-MM-DD, defaulting to today.
+
+    One entry per day — logging again the same day overwrites.
+    """
+    from datetime import date as _date
+
+    if not 30 <= weight_kg <= 250:
+        return f"Refusing implausible weight {weight_kg} kg — expected 30–250."
+    day = date or _date.today().isoformat()
+    conn = _weight_connection()
+    conn.execute(
+        "INSERT INTO weight (date, weight_kg) VALUES (?, ?) "
+        "ON CONFLICT(date) DO UPDATE SET weight_kg = excluded.weight_kg",
+        (day, weight_kg),
+    )
+    conn.commit()
+    previous = conn.execute(
+        "SELECT date, weight_kg FROM weight WHERE date < ? ORDER BY date DESC LIMIT 1",
+        (day,),
+    ).fetchone()
+    conn.close()
+    if previous:
+        delta = weight_kg - previous[1]
+        return f"Logged {weight_kg} kg on {day} ({delta:+.1f} kg since {previous[0]})."
+    return f"Logged {weight_kg} kg on {day} (first entry)."
+
+
+@mcp.tool
+def get_weight_history(days: int = 90) -> list[dict]:
+    """Body-weight entries for the last N days, newest first."""
+    conn = _weight_connection()
+    rows = conn.execute(
+        "SELECT date, weight_kg FROM weight WHERE date >= date('now', ?) "
+        "ORDER BY date DESC",
+        (f"-{int(days)} days",),
+    ).fetchall()
+    conn.close()
+    return [{"date": d, "weight_kg": w} for d, w in rows]
+
+
 @mcp.tool
 def get_coaching_procedure() -> str:
     """How to coach: the exact procedure and personal context for answering
