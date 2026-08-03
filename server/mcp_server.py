@@ -25,8 +25,14 @@ from db import ROOT, get_connection  # noqa: E402
 from fastmcp import FastMCP  # noqa: E402
 
 GOALS_PATH = ROOT / "GOALS.md"
+COACHING_PATH = ROOT / "COACHING.md"
 
-mcp = FastMCP("sport-tracker")
+mcp = FastMCP(
+    "sport-tracker",
+    instructions=COACHING_PATH.read_text(encoding="utf-8")
+    if COACHING_PATH.exists()
+    else None,
+)
 
 
 def _parse_number(raw: str):
@@ -79,6 +85,16 @@ def get_goals() -> str:
     if not GOALS_PATH.exists():
         return "No GOALS.md found."
     return GOALS_PATH.read_text(encoding="utf-8")
+
+
+@mcp.tool
+def get_coaching_procedure() -> str:
+    """How to coach: the exact procedure and personal context for answering
+    "what should I train" questions. Read this before recommending a session.
+    """
+    if not COACHING_PATH.exists():
+        return "No COACHING.md found."
+    return COACHING_PATH.read_text(encoding="utf-8")
 
 
 @mcp.tool

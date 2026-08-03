@@ -7,7 +7,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY scripts/ scripts/
 COPY server/ server/
-COPY GOALS.md .
+COPY GOALS.md COACHING.md ./
 
 # Persistent state (database + Garmin token cache) lives on a mounted volume.
 ENV DB_PATH=/data/activities.db \
