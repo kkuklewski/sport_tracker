@@ -46,7 +46,7 @@ Set 2026-08-03. Four training weeks available (Aug 3 – Aug 30), then a
   that, three days running. Time-on-bike is the limiter, not fitness.
 - Typical moving pace 12–18 km/h on mixed surface → plan 85 km as **5.5–6 h
   moving, 7+ h elapsed**.
-- 2026-08-02: 5 km PB 28:26, max HR 200, aerobic TE 4.5. Very hard effort;
+- 2026-08-02: 5 km PB 28:47, max HR 200, aerobic TE 4.5. Very hard effort;
   reported fatigue on Aug 3.
 - No injuries reported.
 
