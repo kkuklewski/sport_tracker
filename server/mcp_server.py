@@ -21,6 +21,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 from db import ROOT, get_connection, parse_number  # noqa: E402
+from advise import assess  # noqa: E402
+from load import current as current_load  # noqa: E402
+from load import series as load_series  # noqa: E402
 from plan import (  # noqa: E402
     SESSION_TYPES,
     adherence,
@@ -29,6 +32,8 @@ from plan import (  # noqa: E402
     plan_with_status,
     upsert_session,
 )
+
+from wellness import get_wellness_connection, sync_wellness  # noqa: E402
 
 from fastmcp import FastMCP  # noqa: E402
 
@@ -242,6 +247,75 @@ def cancel_planned_session(date: str, session_type: str) -> str:
 
 
 @mcp.tool
+def get_training_load() -> dict:
+    """Current training load: CTL (fitness), ATL (fatigue), TSB (form).
+
+    Load is Banister TRIMP from heart rate and duration — there is no cycling
+    power meter and Garmin's training_stress_score column is 0.0 on every row,
+    so power-based models are unavailable here.
+
+    `bands` are TSB percentiles from this athlete's own last year, not textbook
+    cycling values: peak CTL here is around 24 where the literature assumes
+    60-100, so imported thresholds would call every hard week a disaster.
+    Compare `tsb` against `bands`, never against remembered numbers.
+    """
+    conn = get_connection()
+    try:
+        return current_load(conn)
+    finally:
+        conn.close()
+
+
+@mcp.tool
+def get_load_series(days: int = 42) -> list[dict]:
+    """Daily load, CTL, ATL and TSB for the last N days — the trend behind the
+    single number `get_training_load` returns. Useful for spotting a ramp.
+    """
+    conn = get_connection()
+    try:
+        return load_series(conn)[-int(days):]
+    finally:
+        conn.close()
+
+
+@mcp.tool
+def get_wellness(days: int = 14) -> list[dict]:
+    """Daily recovery data from Garmin, newest first: training readiness, HRV
+    status, resting HR, Body Battery, sleep and VO2max.
+
+    This is what the activity log cannot see — a night of bad sleep or an
+    unbalanced HRV reading never shows up in distance or duration.
+    """
+    conn = get_wellness_connection()
+    cur = conn.execute(
+        "SELECT * FROM wellness WHERE date >= date('now', ?) ORDER BY date DESC",
+        (f"-{int(days)} days",),
+    )
+    columns = [c[0] for c in cur.description]
+    rows = [
+        {k: v for k, v in zip(columns, row) if v is not None}
+        for row in cur.fetchall()
+    ]
+    conn.close()
+    return rows
+
+
+@mcp.tool
+def assess_today() -> dict:
+    """Whether today's planned session should run, soften, or move.
+
+    Combines all three layers — the planned slot, training load, and this
+    morning's wellness — into one verdict with the signals that drove it:
+    rest | mobility_only | easy_only | as_planned | can_push.
+
+    The verdict is the strictest thing any single signal asks for, because
+    these are vetoes rather than votes. Read `reasons` and pass them on; a
+    verdict without its reasoning is not coaching.
+    """
+    return assess()
+
+
+@mcp.tool
 def sync_now(days: int = 7) -> str:
     """Pull the latest activities from Garmin Connect into the database.
 
@@ -255,7 +329,15 @@ def _run_sync(days: int) -> str:
 
     try:
         added = sync(days=days, dry_run=False, interactive=False)
-        return f"Sync complete: {added} new activity(ies) added."
+        # Wellness is a separate set of endpoints, and the readiness gate is
+        # worthless reasoning from yesterday's night, so it refreshes here too.
+        # A wellness failure must not report the activity sync as failed.
+        try:
+            days_written = sync_wellness(days=days)
+            wellness_note = f" {days_written} wellness day(s) refreshed."
+        except Exception as exc:
+            wellness_note = f" Wellness refresh failed: {exc}"
+        return f"Sync complete: {added} new activity(ies) added.{wellness_note}"
     except SystemExit as exc:
         # garmin_sync raises SystemExit with a human-readable reason
         # (expired token, rate limit, unreachable). Never retry logins here —

@@ -12,5 +12,7 @@ cd "$(dirname "$0")/.." || exit 1
 echo "=== $(date '+%Y-%m-%d %H:%M:%S') ==="
 # A failed sync must not stop the reminders pass: yesterday's plan still needs
 # pushing even when Garmin is unreachable or the cached token has expired.
-.venv/bin/python scripts/garmin_sync.py --days 7 || echo "sync failed, continuing"
+.venv/bin/python scripts/garmin_sync.py --days 7 || echo "activity sync failed, continuing"
+.venv/bin/python scripts/wellness.py --days 7 || echo "wellness sync failed, continuing"
 .venv/bin/python scripts/reminders.py
+.venv/bin/python scripts/advise.py || true

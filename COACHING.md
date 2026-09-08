@@ -10,16 +10,21 @@ When asked what to train (today, tomorrow, next), always follow this order:
    today's activities. If sync fails, say the data may be stale and continue.
 2. **Read the goal** — call `get_goals`. The weekly structure, base-rebuild
    progression, and philosophy there are the plan; do not invent another.
-3. **Check the plan** — call `get_plan(days_ahead=7, days_back=7)`. If a
-   session is already planned for today, the job is usually to confirm or
-   adjust it, not to invent a different one. Sessions come back tagged
-   done / missed / pending.
-4. **Assess load** — call `get_recent_activities` (14 days). Gauge recovery
-   from `aerobic_te`, `avg_hr`/`max_hr`, and `duration` — not just volume.
-   Never stack intensity: after a high-TE (≥3.5) or high-HR session, the next
-   session is mobility or easy Zone 2.
-5. **Recommend one session** — cycling, running, or mobility — and name the
-   recent sessions that drove the call. Brief reasoning, not just a verdict.
+3. **Call `assess_today`** — this is the primary answer. It returns the planned
+   slot, training load, this morning's wellness, and a verdict:
+   `rest` | `mobility_only` | `easy_only` | `as_planned` | `can_push`,
+   with the signals that produced it.
+4. **Respect the verdict, then fill in the detail.** The verdict bounds what
+   may be recommended; `get_plan` and `GOALS.md` decide what goes inside those
+   bounds. Never recommend above the ceiling it sets — it is the strictest
+   thing any single signal asked for, and those signals are vetoes, not votes.
+5. **Recommend one session** and **give the reasons**. Pass on the actual
+   numbers from `reasons` — TSB against the athlete's own bands, the readiness
+   level, the HRV status. A verdict without its reasoning is not coaching.
+
+Use `get_recent_activities` (14 days) when you need the texture behind the
+numbers — which rides were hard, how long, how hilly. Use `get_load_series`
+to show a trend, and `get_wellness` for the nights behind a bad TSB.
 
 ## Planning the week
 
@@ -39,6 +44,21 @@ gap in Aug 2026 wiped out an entire training block unnoticed).
   athlete — change the plan. If adherence is low and there is nothing
   unplanned, that is the gap pattern; make next week smaller and specific
   rather than repeating the same ask.
+
+## Reading the load numbers
+
+- **TSB is compared to `bands`, never to remembered thresholds.** Cycling's
+  usual −30/−10/+5/+25 assume a CTL of 60–100. Peak CTL here is about 24, so
+  textbook bands would call every hard week a catastrophe. `bands` are this
+  athlete's own TSB percentiles from the last year.
+- **CTL is the progression dial.** The long-ride table in GOALS.md is a
+  starting shape, not a contract: if CTL is climbing more than ~5 points a
+  week, the next long ride holds rather than grows, whatever the table says.
+- **Load is TRIMP, not TSS.** There is no cycling power meter and Garmin's
+  `training_stress_score` is 0.0 on every row. Never quote TSS or normalized
+  power for a ride; the running power figures are wrist estimates.
+- Max HR comes from one running effort, so cycling TRIMP runs slightly low.
+  Fine for trend, not for absolute comparison against other athletes.
 
 ## Personal context
 

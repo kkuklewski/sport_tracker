@@ -11,8 +11,9 @@ Both paths share `scripts/db.py`, which formats and dedupes identically on `(dat
 ## Remote MCP server (Claude.ai / mobile app)
 
 `server/mcp_server.py` wraps the same pipeline as a FastMCP HTTP server so the Claude app can use it as a custom connector. It runs on the `vps-jarvis` VPS in Docker (deployed by Coolify from this repo's GitHub remote, `server/Dockerfile`), with `activities.db` and the Garmin token cache on a `/data` volume. Tools: `get_recent_activities`, `get_goals`, `get_coaching_procedure`, `sync_now`, `log_weight` /
-`get_weight_history`, and the planner tools `plan_sessions`, `get_plan`,
-`get_plan_adherence`, `cancel_planned_session`; a background thread also syncs
+`get_weight_history`, the planner tools `plan_sessions`, `get_plan`,
+`get_plan_adherence`, `cancel_planned_session`, and the load/readiness tools
+`get_training_load`, `get_load_series`, `get_wellness`, `assess_today`; a background thread also syncs
 every 6 h.
 
 Auth is the URL itself — the endpoint is `https://sport-tracker.146.59.127.12.sslip.io/<MCP_PATH_SECRET>/mcp` (secret set in Coolify env vars; never commit it). `GOALS.md` is baked into the image, so goal edits reach the VPS via commit + push + Coolify redeploy. The local Mac workflow below is independent of the VPS deployment — two DBs, same dedup logic.
@@ -69,6 +70,42 @@ intended.
 The local `activities.db` and the VPS one are separate files, so a plan written
 locally is not visible to the remote MCP server, and vice versa. Plan on
 whichever surface you will actually be reading it from.
+
+## Load and readiness
+
+Three layers decide what to train, and each answers a question the others
+cannot. `GOALS.md` fixes *what* the week contains, `scripts/load.py` says how
+deep the hole is, `scripts/wellness.py` says whether the body agrees this
+morning, and `scripts/advise.py` combines all three into one verdict.
+
+```
+.venv/bin/python scripts/wellness.py --days 7     # pull recovery data
+.venv/bin/python scripts/load.py                  # CTL / ATL / TSB now
+.venv/bin/python scripts/load.py --days 30        # the daily series
+.venv/bin/python scripts/advise.py                # today's verdict
+```
+
+- **Load is Banister TRIMP, not TSS.** There is no cycling power meter, and
+  `training_stress_score` is `0.0` on all 129 rows — as is `decompression`
+  (`No` everywhere). Both columns are dead; never compute from them. The 23
+  rows with power are all *running*, wrist-estimated.
+- Resting and max HR are **measured, not assumed**: resting is the median of
+  the last 90 days of `wellness` (median, so one freak night cannot inflate
+  every TRIMP since), max is the highest ever recorded in `activities`.
+- `CTL` is a 42-day and `ATL` a 7-day exponential average of daily TRIMP;
+  `TSB = CTL - ATL` uses the *previous* day's values, since form is what you
+  woke up with, before today's session counts against it.
+- **TSB bands are calibrated per-athlete.** Textbook cycling bands assume a
+  CTL of 60–100; peak here is ~24, so `calibrated_bands()` reads TSB
+  percentiles from this athlete's own last year instead. Compare against
+  `bands`, never against remembered numbers.
+- `wellness` is expensive — six endpoints per day — so stored days are skipped
+  unless within `REFRESH_DAYS`, because Garmin keeps revising the last day or
+  two as the watch uploads the rest of the night. A day where the watch was off
+  is left absent rather than stored empty, so gaps stay visible.
+- `advise.assess()` takes the **strictest** verdict any single signal asks for.
+  These are vetoes, not votes: downgrading a session costs a day, while
+  overriding a buried body cost days two and three of the September tour.
 
 ## Apple Reminders bridge (plan -> iPhone)
 
@@ -130,8 +167,11 @@ VPS database and never becomes a reminder. Plan on the Mac, or accept the gap.
 
 - `activity_type` values seen so far: `Cycling`, `Running`, `Walking`, `Multisport`, `Other` (mobility sessions are logged as `Other`, titled "Mobility").
 - `activities.db` also holds `weight` (one row per day, `log_weight` overwrites
-  the same day) and `planned_sessions` (see above). Both are created lazily on
-  first use, so an older database file picks them up without a migration.
+  the same day), `planned_sessions`, and `wellness` (see above). All are created
+  lazily on first use, so an older database file picks them up without a
+  migration.
+- Dead columns, confirmed across all 129 rows: `training_stress_score` is always
+  `0.0` and `decompression` always `No`. They look populated but carry nothing.
 - Numeric-looking fields (`distance_km`, `calories`, `steps`, etc.) are stored as raw TEXT exactly as Garmin exports them — some contain thousands-separators (e.g. `"1,563"`) or `"--"` for not-applicable. Strip/parse before doing math.
 - `date` is `YYYY-MM-DD HH:MM:SS` and unique per activity to the second; it's the dedup key together with `title`.
 - Ignore any `*:Zone.Identifier` files alongside the CSV — that's just Windows/NTFS "downloaded from the internet" metadata, not activity data.
