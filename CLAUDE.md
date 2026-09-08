@@ -10,7 +10,10 @@ Both paths share `scripts/db.py`, which formats and dedupes identically on `(dat
 
 ## Remote MCP server (Claude.ai / mobile app)
 
-`server/mcp_server.py` wraps the same pipeline as a FastMCP HTTP server so the Claude app can use it as a custom connector. It runs on the `vps-jarvis` VPS in Docker (deployed by Coolify from this repo's GitHub remote, `server/Dockerfile`), with `activities.db` and the Garmin token cache on a `/data` volume. Tools: `get_recent_activities`, `get_goals`, `sync_now`; a background thread also syncs every 6 h.
+`server/mcp_server.py` wraps the same pipeline as a FastMCP HTTP server so the Claude app can use it as a custom connector. It runs on the `vps-jarvis` VPS in Docker (deployed by Coolify from this repo's GitHub remote, `server/Dockerfile`), with `activities.db` and the Garmin token cache on a `/data` volume. Tools: `get_recent_activities`, `get_goals`, `get_coaching_procedure`, `sync_now`, `log_weight` /
+`get_weight_history`, and the planner tools `plan_sessions`, `get_plan`,
+`get_plan_adherence`, `cancel_planned_session`; a background thread also syncs
+every 6 h.
 
 Auth is the URL itself — the endpoint is `https://sport-tracker.146.59.127.12.sslip.io/<MCP_PATH_SECRET>/mcp` (secret set in Coolify env vars; never commit it). `GOALS.md` is baked into the image, so goal edits reach the VPS via commit + push + Coolify redeploy. The local Mac workflow below is independent of the VPS deployment — two DBs, same dedup logic.
 
@@ -36,10 +39,43 @@ When a new `Activities.csv` is dropped in instead:
 
 Both are idempotent — they only insert rows they haven't seen and print what's new.
 
+## The planner
+
+`scripts/plan.py` stores intended sessions in a `planned_sessions` table in the
+same `activities.db`. It exists because tracking alone cannot see a training
+block evaporate: nothing was logged between 2026-08-10 and 2026-09-02, and no
+part of the system noticed, because nothing recorded that sessions had been
+intended.
+
+```
+.venv/bin/python scripts/plan.py                 # upcoming plan, with status
+.venv/bin/python scripts/plan.py --adherence 28  # last 28 days, plan vs actual
+```
+
+- A plan row is `(date, session_type)` — `cycling`, `running`, or `mobility` —
+  plus optional focus, target distance/duration, intensity, and notes. That
+  pair is the primary key, so replanning a slot overwrites it and replanning a
+  week is idempotent, like both ingest paths.
+- Status is **derived, never stored**: a slot is `done` when an activity of a
+  matching type exists that day, `missed` when the day has passed without one,
+  `pending` otherwise. Nothing is ticked off by hand — a synced ride completes
+  its slot. `Walking` and `Multisport` match nothing, so a walk never completes
+  a planned session.
+- `adherence()` also reports **unplanned** sessions. Training done off-plan is
+  still training; a block that is all unplanned means the plan is wrong.
+- The plan is data, `GOALS.md` is intent. Keep the weekly structure and
+  progression in `GOALS.md`; keep concrete dated slots in the table.
+
+The local `activities.db` and the VPS one are separate files, so a plan written
+locally is not visible to the remote MCP server, and vice versa. Plan on
+whichever surface you will actually be reading it from.
+
 ## Answering "what should I train today"
 
 1. Sync (above) to make sure `activities.db` is current.
 2. Read `GOALS.md` for the user's stated goal, target weekly structure, and constraints.
+   Check `scripts/plan.py` for what was already planned — if today has a slot,
+   the job is usually to confirm or adjust it, not to invent something else.
 3. Query `activities.db` for recent sessions (last ~7-14 days) — look at `activity_type`, `date`, `aerobic_te`, `avg_hr`/`max_hr`, and `duration` to gauge recent load and recovery, not just volume.
 4. Recommend cycling, running, or mobility (the three activity types in scope) based on: what's under-represented lately, whether the last 1-2 sessions were hard (avoid stacking intensity — recommend mobility/easy work after a high-HR or high-TE session), and how it fits the stated goal in `GOALS.md`.
 5. State the reasoning briefly (which recent sessions drove the call), not just the verdict.
@@ -47,6 +83,9 @@ Both are idempotent — they only insert rows they haven't seen and print what's
 ## Data notes
 
 - `activity_type` values seen so far: `Cycling`, `Running`, `Walking`, `Multisport`, `Other` (mobility sessions are logged as `Other`, titled "Mobility").
+- `activities.db` also holds `weight` (one row per day, `log_weight` overwrites
+  the same day) and `planned_sessions` (see above). Both are created lazily on
+  first use, so an older database file picks them up without a migration.
 - Numeric-looking fields (`distance_km`, `calories`, `steps`, etc.) are stored as raw TEXT exactly as Garmin exports them — some contain thousands-separators (e.g. `"1,563"`) or `"--"` for not-applicable. Strip/parse before doing math.
 - `date` is `YYYY-MM-DD HH:MM:SS` and unique per activity to the second; it's the dedup key together with `title`.
 - Ignore any `*:Zone.Identifier` files alongside the CSV — that's just Windows/NTFS "downloaded from the internet" metadata, not activity data.

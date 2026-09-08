@@ -6,40 +6,50 @@
 
 ## Primary goal
 
-**3-day gravel / MTB bike tour starting Thursday 3 September 2026.**
-Roughly 80–90 km per day, three consecutive days.
+**94 kg → 86 kg** (188 cm; BMI 26.6 → 24.3). Set 2026-08-03 at 92 kg,
+restated 2026-09-08 at 94 kg — the number went the wrong way during a month
+with almost no training, which is the whole argument for the plan below.
 
-Set 2026-08-03. Four training weeks available (Aug 3 – Aug 30), then a
-3-day taper (Aug 31 – Sep 2).
+At a sustainable ~0.4–0.5 kg per week this lands around **mid-January 2027**.
+That is the honest arithmetic, not a stretch target. History says it works:
+Nov–Dec 2025 dropped ~10 kg on regular strength/mobility sessions almost
+every other day.
 
-## Intermediate goal — weight
-
-**92 kg → 86 kg** (188 cm; BMI 26.0 → 24.3). Set 2026-08-03.
-History shows this works: Nov–Dec 2025 dropped ~10 kg on regular
-strength/mobility gym sessions almost every other day. The current weekly
-structure already serves this goal — no extra volume needed, consistency is
-the lever.
+There is deliberately **no event** on the calendar right now. The September
+tour is done (see below); the next one gets scheduled once the weekly rhythm
+is holding, not before.
 
 ## Target weekly structure
+
+The lever is consistency, not volume. Four slots a week, planned in advance:
 
 - **2× mobility** — in practice strength training with mobility elements
   (the Nov–Dec 2025 format that drove the -10 kg cut), not light stretching.
   Content is coached externally. Schedule the slot, never prescribe the
   content.
-- **2× bike** — alternate gravel and MTB. One is the weekly long ride, the
-  other is short/easy Zone 2.
+- **2× bike** — alternate gravel and MTB. One longer endurance ride, one
+  short/easy Zone 2.
 - **Running** — optional, purely by feel. Mostly relaxation; occasional hard
-  efforts self-selected, never prescribed during this build.
+  efforts self-selected, never prescribed.
 
-## Long-ride progression (the spine of the plan)
+A week where all four slots happen beats a week with one heroic session.
+The metric that matters is adherence over the last 28 days, not any single
+ride.
 
-| Week | Dates | Long ride | Note |
-|---|---|---|---|
-| 1 | Aug 3–9 | ~35 km | Start conservative, still fatigued from 5 km PB |
-| 2 | Aug 10–16 | ~50 km | First ride past current lifetime max |
-| 3 | Aug 17–23 | 65 km + 40 km | **Back-to-back weekend** — the key adaptation |
-| 4 | Aug 24–30 | 75 km + 50 km | Peak, back-to-back again |
-| Taper | Aug 31–Sep 2 | 30–40 min easy spins only | Arrive fresh |
+## Rebuilding the base (Sep–Oct 2026)
+
+Coming off a month of near-zero training, the bike volume restarts modestly
+and the long ride grows about 10% a week:
+
+| Weeks | Long ride | Second ride |
+|---|---|---|
+| Sep 9–20 | 30–35 km | 15–20 km easy |
+| Sep 21–Oct 4 | 40–45 km | 20 km easy |
+| Oct 5–18 | 50–55 km | 20–25 km easy |
+| Oct 19 on | hold ~55–60 km until a new event sets the target |
+
+Nothing here needs to be hit exactly. A missed week means resuming at the
+same distance, not catching up.
 
 ## Training philosophy
 
@@ -48,20 +58,28 @@ the lever.
 - Most riding is easy/endurance **Zone 2** (~avg HR 125–140 based on history).
 - Never stack intensity: after a high-HR or high-TE session, next session is
   mobility or easy.
+- Weight is driven by the weekly structure holding, not by extra volume and
+  never by prescribed dieting.
 
-## Constraints and current state
+## Current state (2026-09-08)
 
-- Baseline volume ~150–200 min/week.
-- **Longest ride on record: 27.3 km / 2h29 (2026-07-11).** The event is ~3×
-  that, three days running. Time-on-bike is the limiter, not fitness.
-- Typical moving pace 12–18 km/h on mixed surface → plan 85 km as **5.5–6 h
-  moving, 7+ h elapsed**.
-- 2026-08-02: 5 km PB 28:47, max HR 200, aerobic TE 4.5. Very hard effort;
-  reported fatigue on Aug 3.
+- **The September tour happened, partially.** Sep 3: 78.2 km / 5h36 (avg HR
+  124, TE 3.4) — the target distance, ridden off a 27 km lifetime max. Sep 4
+  scaled back to 13.1 km, Sep 5 to 27.4 km. Day one proved the distance is
+  reachable; days two and three proved the base wasn't there to repeat it.
+- **The build never happened.** Nothing was logged between 2026-08-10 and
+  2026-09-02 — a 24-day gap in what was meant to be the four-week block. This
+  is the failure mode the plan tracking now exists to catch.
+- Back training since: Sep 7 ride 31.5 km, avg HR 157, TE 5.0 (hard for the
+  current base), Sep 8 mobility.
+- Longest ride on record: **78.2 km / 5h36 (2026-09-03).**
+- 5 km PB 28:47 (2026-08-02), max HR 200.
 - No injuries reported.
 
-## Non-negotiables for this goal
+## Non-negotiables
 
-Saddle tolerance, fueling, and kit are more likely to end the tour than
-aerobic fitness. Every long ride must be ridden on the **actual loaded
-setup** — same bike, bags, shorts, shoes, saddle.
+- Every long ride is ridden on the **actual loaded setup** — same bike, bags,
+  shorts, shoes, saddle. Saddle tolerance and fueling end tours; fitness
+  rarely does.
+- The week is planned before it starts. An unplanned week is the one that
+  disappears.

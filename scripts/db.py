@@ -87,6 +87,24 @@ def insert_activity(cur: sqlite3.Cursor, values: dict) -> bool:
     return bool(cur.rowcount)
 
 
+def parse_number(raw):
+    """Garmin export strings -> numbers: '--' -> None, '1,563' -> 1563.
+
+    Every numeric-looking column is stored as the raw TEXT Garmin exported, so
+    anything doing arithmetic on the log goes through here first. Values that
+    aren't numbers at all (durations like '01:02:03', paces like '5:43') come
+    back unchanged rather than raising.
+    """
+    if raw is None or raw in ("--", ""):
+        return None
+    cleaned = str(raw).replace(",", "")
+    try:
+        value = float(cleaned)
+    except ValueError:
+        return raw
+    return int(value) if value.is_integer() else value
+
+
 def describe(values: dict) -> str:
     """One-line summary of an activity, for sync output."""
     return (

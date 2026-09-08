@@ -20,7 +20,15 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
-from db import ROOT, get_connection  # noqa: E402
+from db import ROOT, get_connection, parse_number  # noqa: E402
+from plan import (  # noqa: E402
+    SESSION_TYPES,
+    adherence,
+    delete_session,
+    get_plan_connection,
+    plan_with_status,
+    upsert_session,
+)
 
 from fastmcp import FastMCP  # noqa: E402
 
@@ -33,18 +41,6 @@ mcp = FastMCP(
     if COACHING_PATH.exists()
     else None,
 )
-
-
-def _parse_number(raw: str):
-    """Garmin export strings -> numbers: '--' -> None, '1,563' -> 1563."""
-    if raw is None or raw in ("--", ""):
-        return None
-    cleaned = raw.replace(",", "")
-    try:
-        value = float(cleaned)
-        return int(value) if value.is_integer() else value
-    except ValueError:
-        return raw  # durations like "01:02:03" and paces stay as strings
 
 
 NUMERIC_FIELDS = {
@@ -73,7 +69,7 @@ def get_recent_activities(days: int = 14) -> list[dict]:
     for row in cur.fetchall():
         record = dict(zip(columns, row))
         for key in NUMERIC_FIELDS:
-            record[key] = _parse_number(record.get(key))
+            record[key] = parse_number(record.get(key))
         rows.append({k: v for k, v in record.items() if v not in (None, "--")})
     conn.close()
     return rows
@@ -151,6 +147,98 @@ def get_coaching_procedure() -> str:
     if not COACHING_PATH.exists():
         return "No COACHING.md found."
     return COACHING_PATH.read_text(encoding="utf-8")
+
+
+@mcp.tool
+def plan_sessions(sessions: list[dict]) -> str:
+    """Write planned training sessions into the plan.
+
+    Each session is a dict with:
+        date                 required, YYYY-MM-DD
+        session_type         required, one of cycling | running | mobility
+        focus                optional, e.g. "long ride", "zone 2", "strength+mobility"
+        target_distance_km   optional number
+        target_duration_min  optional number
+        intensity            optional, e.g. "easy", "zone2", "hard"
+        notes                optional free text
+
+    Planning the same date and session_type again overwrites that slot, so a
+    week can be replanned without creating duplicates. Plan slots, not content:
+    mobility is coached externally and running is by feel.
+    """
+    conn = get_plan_connection()
+    cur = conn.cursor()
+    try:
+        for session in sessions:
+            upsert_session(cur, session)
+    except ValueError as exc:
+        conn.close()
+        return f"Nothing written: {exc}"
+    conn.commit()
+    conn.close()
+    return f"{len(sessions)} planned session(s) written."
+
+
+@mcp.tool
+def get_plan(days_ahead: int = 14, days_back: int = 0) -> list[dict]:
+    """Planned sessions, each tagged done / missed / pending.
+
+    Defaults to the upcoming fortnight. Pass days_back to include recent past
+    days — useful for seeing what was skipped before recommending what is next.
+    A session counts as done when an activity of a matching type was recorded
+    that day (mobility is logged by the watch as "Other").
+    """
+    from datetime import date as _date
+
+    today = _date.today()
+    start = _date.fromordinal(today.toordinal() - int(days_back))
+    end = _date.fromordinal(today.toordinal() + int(days_ahead))
+    conn = get_plan_connection()
+    try:
+        return plan_with_status(conn, start.isoformat(), end.isoformat())
+    finally:
+        conn.close()
+
+
+@mcp.tool
+def get_plan_adherence(days: int = 28) -> dict:
+    """Plan vs actual over the last N days: counts, an adherence percentage,
+    every planned session with its status, and sessions that happened off-plan.
+
+    Pending (future or today) slots are excluded from the percentage. Read this
+    before judging a training block — a low percentage with many unplanned
+    sessions means the plan needs changing, not the athlete.
+    """
+    from datetime import date as _date
+
+    today = _date.today()
+    start = _date.fromordinal(today.toordinal() - int(days))
+    conn = get_plan_connection()
+    try:
+        return adherence(conn, start.isoformat(), today.isoformat())
+    finally:
+        conn.close()
+
+
+@mcp.tool
+def cancel_planned_session(date: str, session_type: str) -> str:
+    """Remove one planned session, identified by its date and session type.
+
+    Use when a slot is dropped outright. To change a session instead, call
+    plan_sessions again for the same date and type.
+    """
+    if session_type.lower().strip() not in SESSION_TYPES:
+        return f"Unknown session_type {session_type!r}; expected one of {', '.join(SESSION_TYPES)}."
+    conn = get_plan_connection()
+    cur = conn.cursor()
+    removed = delete_session(cur, date, session_type)
+    conn.commit()
+    conn.close()
+    return (
+        f"Removed the {session_type} session planned for {date}."
+        if removed
+        else f"No {session_type} session was planned for {date}."
+    )
 
 
 @mcp.tool
