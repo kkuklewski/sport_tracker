@@ -36,25 +36,41 @@ A week where all four slots happen beats a week with one heroic session.
 The metric that matters is adherence over the last 28 days, not any single
 ride.
 
-## Rebuilding the base (Sep–Oct 2026)
+## Rebuilding the base — driven by CTL, not by dates
 
-Coming off a month of near-zero training, the bike volume restarts modestly
-and the long ride grows about 10% a week:
+The previous version of this section was a fixed table of distances by week.
+That is exactly the shape of plan that failed in August: a number written in
+advance cannot know what the body absorbed, so it is either ignored or
+obeyed into a hole. The long ride now grows on a condition instead.
 
-| Weeks | Long ride | Second ride |
-|---|---|---|
-| Sep 9–20 | 30–35 km | 15–20 km easy |
-| Sep 21–Oct 4 | 40–45 km | 20 km easy |
-| Oct 5–18 | 50–55 km | 20–25 km easy |
-| Oct 19 on | hold ~55–60 km until a new event sets the target |
+**Grow the long ride only when all three hold on the morning of the ride:**
 
-Nothing here needs to be hit exactly. A missed week means resuming at the
-same distance, not catching up.
+- `get_training_load` shows `ctl_change_7d` **at or below +3** — the last
+  week's load has been absorbed, not just survived.
+- `tsb` is **above the `low` band** returned in the same call (your own
+  fatigued threshold, not a textbook one).
+- `assess_today` returns `as_planned` or `can_push`.
+
+**When they hold:** next long ride is the last completed one **+10%**, capped
+at +5 km. **When they don't:** repeat the same distance, or drop to the short
+easy ride. Never skip forward to "catch up" — the ladder has no schedule to
+be behind.
+
+Rough shape this implies, if nothing gets interrupted: 20 → 22 → 25 → 27 →
+30 km and onward, reaching 55–60 km around late November. Slower than the
+August table promised, and unlike that table it is allowed to be wrong
+without costing anything.
+
+**Ceiling:** hold at 55–60 km until a new event sets a target. CTL should sit
+around 30–35 by then — meaningfully above the 24.7 peak on record, which is
+the real measure of whether this worked.
 
 ## Training philosophy
 
 - Progressive volume increase, not aggressive.
-- Recovery and listening to the body take priority over hitting a number.
+- Recovery and listening to the body take priority over hitting a number —
+  and "listening" now has numbers of its own: TSB, CTL ramp, Garmin readiness
+  and HRV status, combined by `assess_today`.
 - Most riding is easy/endurance **Zone 2** (~avg HR 125–140 based on history).
 - Never stack intensity: after a high-HR or high-TE session, next session is
   mobility or easy.
