@@ -16,7 +16,56 @@ Both paths share `scripts/db.py`, which formats and dedupes identically on `(dat
 `get_training_load`, `get_load_series`, `get_wellness`, `assess_today`; a background thread also syncs
 every 6 h.
 
-Auth is the URL itself — the endpoint is `https://sport-tracker.146.59.127.12.sslip.io/<MCP_PATH_SECRET>/mcp` (secret set in Coolify env vars; never commit it). `GOALS.md` is baked into the image, so goal edits reach the VPS via commit + push + Coolify redeploy. The local Mac workflow below is independent of the VPS deployment — two DBs, same dedup logic.
+Auth is the URL itself — the endpoint is `https://sport-tracker.146.59.127.12.sslip.io/<MCP_PATH_SECRET>/mcp` (secret set in Coolify env vars; never commit it). `GOALS.md` is baked into the image, so goal edits reach the VPS via commit + push + Coolify redeploy. The local Mac workflow below is independent of the VPS deployment — two DBs,
+same dedup logic. The VPS syncs activities and wellness for itself, so
+`get_training_load` and `assess_today` work identically there, but
+`planned_sessions` exists only where a plan was written: plan on the Mac and
+the phone's `assess_today` reports no slot for today, because the row is not
+in its database.
+
+## Deploying to the VPS
+
+The VPS is `ssh vps-jarvis` (Tailscale 100.71.106.77, user `ubuntu`); its
+public address is 146.59.127.12. Coolify runs there in Docker and builds this
+app from the GitHub remote.
+
+| | |
+|---|---|
+| Coolify project / app | `kuklewski` / `sport-tracker`, id **4** |
+| App UUID | `v4wtqyksex3rvjtudqyu9l7h` |
+| Container | `v4wtqyksex3rvjtudqyu9l7h-<n>`, image tagged with the deployed commit |
+| Build | `/server/Dockerfile`, branch `main`, commit `HEAD` |
+
+**Pushing to GitHub does not deploy.** Coolify has `is_auto_deploy_enabled`
+set, but the repository has no webhook and no deploy key pointing at it, so
+nothing ever tells Coolify a push happened. Every deploy has to be triggered
+by hand — the image tag on the running container is the commit actually
+serving traffic, and it sat five weeks behind `main` before anyone noticed.
+
+Queue a deployment (there is no `artisan` deploy command; this is what the UI
+button calls):
+
+```
+ssh vps-jarvis 'docker exec coolify php artisan tinker --execute="
+\$a = App\Models\Application::find(4);
+\$uuid = (string) new Visus\Cuid2\Cuid2();
+queue_application_deployment(application: \$a, deployment_uuid: \$uuid, is_api: true);
+echo \"queued: \$uuid\n\";
+"'
+```
+
+Then poll `App\Models\ApplicationDeploymentQueue::where('deployment_uuid', ...)`
+for `status` — `in_progress` until `finished` or `failed`, and `commit` shows
+what was built. A build takes about a minute.
+
+**Never print `MCP_PATH_SECRET`.** It is the only authentication the endpoint
+has. Read it into a shell variable inside the VPS when a request needs it, and
+keep it out of command output and logs. A wrong path returns 404, which is the
+quick way to confirm the guard still works.
+
+Verifying a deploy is real means checking the tools over the wire, not just
+that the container restarted: MCP needs an `initialize` handshake before
+`tools/list`, so a bare POST correctly answers 400.
 
 ## Workflow — always do this first
 
