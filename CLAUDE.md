@@ -79,6 +79,7 @@ against the Reminders app on this Mac.
 ```
 .venv/bin/python scripts/reminders.py --dry-run   # show what would change
 .venv/bin/python scripts/reminders.py             # reconcile the list
+.venv/bin/python scripts/reminders.py --prune     # also clear stranded reminders
 ```
 
 - **The lists are CalDAV, not iCloud** — every list on this Mac belongs to the
@@ -95,6 +96,12 @@ against the Reminders app on this Mac.
   complete one by hand.
 - A reminder deleted on the phone is absent from the fetch, so its slot is
   recreated rather than updated into nothing.
+- `--prune` deletes past-due reminders that were never completed and that no
+  plan row owns — the wreckage an abandoned block leaves behind. It is opt-in
+  and deliberately **not** part of `daily.sh`: overdue entries are still the
+  user's data, and deleting them silently would look exactly like the bridge
+  losing the plan. Undated reminders are left alone, being hand-typed rather
+  than stranded slots.
 - `planned_sessions.reminder_id` is the link, deliberately excluded from the
   upsert's update set so replanning a slot reuses its reminder. Deleting a slot
   parks the id in `retired_reminders` until the next pass can delete it for

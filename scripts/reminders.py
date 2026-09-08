@@ -61,7 +61,7 @@ RS = "@@REC@@"
 
 
 def fetch_reminders(list_name: str) -> dict:
-    """{id: {name, body, due}} for the list, so the sync can skip no-op writes.
+    """{id: {name, body, due, completed}} for the list, so no-op writes are skipped.
 
     Two jobs: a reminder the user swiped away on the phone is missing here, so
     its slot gets recreated rather than silently updated into the void; and
@@ -90,7 +90,8 @@ def fetch_reminders(list_name: str) -> dict:
                         & ":" & my pad(minutes of theDue)
                 end if
                 set out to out & (id of theReminder) & "{FS}" & (name of theReminder) ¬
-                    & "{FS}" & theBody & "{FS}" & dueText & "{RS}"
+                    & "{FS}" & theBody & "{FS}" & dueText & "{FS}" ¬
+                    & ((completed of theReminder) as string) & "{RS}"
             end repeat
             return out
         end tell
@@ -100,8 +101,11 @@ def fetch_reminders(list_name: str) -> dict:
     for record in output.split(RS):
         if not record.strip():
             continue
-        reminder_id, name, body, due = record.split(FS)
-        reminders[reminder_id] = {"name": name, "body": body, "due": due}
+        reminder_id, name, body, due, completed = record.split(FS)
+        reminders[reminder_id] = {
+            "name": name, "body": body, "due": due,
+            "completed": completed == "true",
+        }
     return reminders
 
 
@@ -123,6 +127,51 @@ def title_for(entry: dict) -> str:
 
 def body_for(entry: dict) -> str:
     return entry.get("notes") or ""
+
+
+def prune(list_name=DEFAULT_LIST, dry_run=False) -> list:
+    """Delete past-due reminders nobody ever completed and no plan row owns.
+
+    An abandoned block strands its reminders: the August 2026 plan left three
+    sitting unchecked for a month. They are noise, and worse, they make a real
+    pending session harder to see.
+
+    Deliberately opt-in and never part of the nightly job — anything overdue is
+    still the user's data, and silently deleting it would be indistinguishable
+    from the bridge losing track of the plan.
+    """
+    conn = get_plan_connection()
+    owned = {
+        row[0]
+        for row in conn.execute(
+            "SELECT reminder_id FROM planned_sessions WHERE reminder_id IS NOT NULL"
+        )
+    }
+    conn.close()
+
+    today = _date.today().isoformat()
+    stale = [
+        (reminder_id, fields)
+        for reminder_id, fields in fetch_reminders(list_name).items()
+        # An undated reminder is something typed in by hand, not a stranded
+        # slot, so it is left alone.
+        if reminder_id not in owned
+        and fields["due"]
+        and fields["due"][:10] < today
+        and not fields["completed"]
+    ]
+    if stale and not dry_run:
+        lines = ['tell application "Reminders"',
+                 f'    set theList to list "{_escape(list_name)}"']
+        for reminder_id, _ in stale:
+            lines += [
+                "    try",
+                f'        delete (first reminder of theList whose id is "{_escape(reminder_id)}")',
+                "    end try",
+            ]
+        lines.append("end tell")
+        _run_applescript("\n".join(lines))
+    return [fields["name"] for _, fields in stale]
 
 
 def _differs(entry: dict, current: dict, hour: int, minute: int) -> bool:
@@ -280,7 +329,17 @@ if __name__ == "__main__":
                         help="how far ahead to push the plan (default: 21)")
     parser.add_argument("--dry-run", action="store_true",
                         help="report what would change without touching Reminders")
+    parser.add_argument("--prune", action="store_true",
+                        help="also delete past-due reminders no plan row owns")
     args = parser.parse_args()
+
+    if args.prune:
+        stale = prune(args.list_name, args.dry_run)
+        prefix = "Would delete" if args.dry_run else "Deleted"
+        for title in stale:
+            print(f"  {prefix}: {title}")
+        if not stale:
+            print("No stranded reminders to clear.")
 
     report = sync(args.list_name, args.due_time, args.days_ahead, args.dry_run)
     prefix = "Would " if args.dry_run else ""
