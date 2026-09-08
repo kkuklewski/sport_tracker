@@ -70,6 +70,45 @@ The local `activities.db` and the VPS one are separate files, so a plan written
 locally is not visible to the remote MCP server, and vice versa. Plan on
 whichever surface you will actually be reading it from.
 
+## Apple Reminders bridge (plan -> iPhone)
+
+`scripts/reminders.py` pushes planned sessions into the **Sport Activity**
+Reminders list. Reminders has no HTTP API, so the only way in is AppleScript
+against the Reminders app on this Mac.
+
+```
+.venv/bin/python scripts/reminders.py --dry-run   # show what would change
+.venv/bin/python scripts/reminders.py             # reconcile the list
+```
+
+- **The lists are CalDAV, not iCloud** — every list on this Mac belongs to the
+  `cloud.easecrafted.com` account. The plan reaches the phone because that
+  account is configured there, not through iCloud sync. A list created under
+  the local "On My Mac" account would never leave the machine.
+- The bridge is a reconciler, not an appender. It creates slots that have no
+  reminder, updates ones whose targets changed, deletes reminders retired by
+  `cancel_planned_session`, and **rewrites nothing that already matches** — an
+  unconditional update would bump every modification date and push needless
+  CalDAV traffic on every scheduled run.
+- **The loop closes both ways**: a synced Garmin activity marks the plan slot
+  done, and the next reminders pass ticks the reminder off on the phone. Never
+  complete one by hand.
+- A reminder deleted on the phone is absent from the fetch, so its slot is
+  recreated rather than updated into nothing.
+- `planned_sessions.reminder_id` is the link, deliberately excluded from the
+  upsert's update set so replanning a slot reuses its reminder. Deleting a slot
+  parks the id in `retired_reminders` until the next pass can delete it for
+  real.
+
+`scripts/daily.sh` chains sync then reminders, in that order, and continues
+past a failed Garmin sync so the plan still reaches the phone.
+`scripts/com.easecrafted.sport-tracker.plist` runs it nightly at 21:30 —
+copy it to `~/Library/LaunchAgents/` and `launchctl load` it to enable.
+
+**Only this Mac can write Reminders.** The VPS has no Reminders app, so a
+session planned from the phone through the remote MCP connector lands in the
+VPS database and never becomes a reminder. Plan on the Mac, or accept the gap.
+
 ## Answering "what should I train today"
 
 1. Sync (above) to make sure `activities.db` is current.

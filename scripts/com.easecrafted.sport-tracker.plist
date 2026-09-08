@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Runs scripts/daily.sh every evening. Edit the paths below if the repo
+     lives somewhere other than ~/_Development/sport_tracker, then:
+         cp scripts/com.easecrafted.sport-tracker.plist ~/Library/LaunchAgents/
+         launchctl load ~/Library/LaunchAgents/com.easecrafted.sport-tracker.plist
+     The first run will prompt for Reminders access; grant it once and launchd
+     runs unattended after that. RunAtLoad catches up if the Mac was asleep. -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.easecrafted.sport-tracker</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/easecrafted/_Development/sport_tracker/scripts/daily.sh</string>
+    </array>
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>21</integer>
+        <key>Minute</key>
+        <integer>30</integer>
+    </dict>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/Users/easecrafted/_Development/sport_tracker/sync.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/easecrafted/_Development/sport_tracker/sync.log</string>
+</dict>
+</plist>

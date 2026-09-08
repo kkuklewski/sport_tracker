@@ -36,7 +36,7 @@ COMPLETED_BY = {
 
 PLAN_COLUMNS = (
     "date", "session_type", "focus", "target_distance_km",
-    "target_duration_min", "intensity", "notes", "created_at",
+    "target_duration_min", "intensity", "notes", "created_at", "reminder_id",
 )
 
 
@@ -54,7 +54,23 @@ def get_plan_connection():
             intensity TEXT,
             notes TEXT,
             created_at TEXT NOT NULL,
+            reminder_id TEXT,
             PRIMARY KEY (date, session_type)
+        )
+        """
+    )
+    # Databases created before the Apple Reminders bridge existed predate the
+    # reminder_id column; add it in place rather than asking for a migration.
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(planned_sessions)")}
+    if "reminder_id" not in columns:
+        conn.execute("ALTER TABLE planned_sessions ADD COLUMN reminder_id TEXT")
+    # Deleting a plan row would otherwise strand its reminder on the phone with
+    # nothing left pointing at it, so the id is parked here until the next
+    # reminders sync can delete it for real.
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS retired_reminders (
+            reminder_id TEXT PRIMARY KEY
         )
         """
     )
@@ -89,9 +105,15 @@ def upsert_session(cur, session: dict) -> None:
         "intensity": session.get("intensity"),
         "notes": session.get("notes"),
         "created_at": datetime.now().isoformat(timespec="seconds"),
+        "reminder_id": None,
     }
+    # reminder_id is intentionally absent from the update set: replanning a slot
+    # rewrites its targets but keeps pointing at the same reminder, which the
+    # bridge then updates in place instead of leaving a duplicate on the phone.
     assignments = ", ".join(
-        f"{c} = excluded.{c}" for c in PLAN_COLUMNS if c != "date" and c != "session_type"
+        f"{c} = excluded.{c}"
+        for c in PLAN_COLUMNS
+        if c not in ("date", "session_type", "reminder_id")
     )
     cur.execute(
         f"INSERT INTO planned_sessions ({', '.join(PLAN_COLUMNS)}) "
@@ -102,9 +124,20 @@ def upsert_session(cur, session: dict) -> None:
 
 
 def delete_session(cur, day: str, session_type: str) -> bool:
+    """Drop a planned slot, queueing its reminder for deletion if it had one."""
+    session_type = session_type.lower().strip()
+    row = cur.execute(
+        "SELECT reminder_id FROM planned_sessions WHERE date = ? AND session_type = ?",
+        (day, session_type),
+    ).fetchone()
+    if row and row[0]:
+        cur.execute(
+            "INSERT OR IGNORE INTO retired_reminders (reminder_id) VALUES (?)",
+            (row[0],),
+        )
     cur.execute(
         "DELETE FROM planned_sessions WHERE date = ? AND session_type = ?",
-        (day, session_type.lower().strip()),
+        (day, session_type),
     )
     return bool(cur.rowcount)
 

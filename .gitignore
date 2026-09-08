@@ -10,3 +10,6 @@ __pycache__/
 # Local environment
 .venv/
 venv/
+
+# launchd job output
+sync.log
