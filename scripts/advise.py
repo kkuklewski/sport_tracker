@@ -83,7 +83,11 @@ def assess(day: str = "") -> dict:
                 f"normal for a consistent week, not a veto."
             )
         elif tsb >= bands["high"]:
-            verdict = _strictest(verdict, "can_push")
+            # The fresh band is the one signal that raises the ceiling rather
+            # than lowering it, so it cannot go through _strictest, which would
+            # always keep as_planned. It runs before every veto below, so any
+            # of them still pulls the verdict back down.
+            verdict = "can_push"
             reasons.append(f"TSB {tsb:+} is in your fresh band (above {bands['high']:+}).")
 
     ramp = load.get("ctl_change_7d")
