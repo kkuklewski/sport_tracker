@@ -47,8 +47,12 @@ obeyed into a hole. The long ride now grows on a condition instead.
 
 - `get_training_load` shows `ctl_change_7d` **at or below +3** — the last
   week's load has been absorbed, not just survived.
-- `tsb` is **above the `low` band** returned in the same call (your own
-  fatigued threshold, not a textbook one).
+- `tsb` is **above the `deep_low` band** returned in the same call (your
+  own 10th percentile, not a textbook one). Not the `low` band: those
+  percentiles come from a year full of idle gaps, so a consistent
+  four-slot week sits between `deep_low` and `low` by design (TSB about -5
+  to -9 at CTL ~19). Gating on `low` would freeze the ladder for exactly
+  the weeks that are working. Changed 2026-09-15.
 - `assess_today` returns `as_planned` or `can_push`.
 
 **When they hold:** next long ride is the last completed one **+10%**, capped

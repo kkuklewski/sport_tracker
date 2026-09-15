@@ -64,7 +64,7 @@ gap in Aug 2026 wiped out an entire training block unnoticed).
 
 - Mobility is coached externally (video-guided). Schedule the slot, never
   prescribe mobility content.
-- Yoga class every second Wednesday evening (first: 2026-08-06). On yoga
+- Yoga class every second Thursday evening, 19:00 (first: 2026-08-06, a Thursday; next ones 2026-09-17, 2026-10-01). On yoga
   weeks it can count as one of the two weekly mobility slots.
 - Rides are MTB in the forest or gravel on paved paths; both count as bike
   sessions. Long rides must use the loaded touring setup (see GOALS.md).

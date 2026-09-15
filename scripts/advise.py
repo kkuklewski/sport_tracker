@@ -74,8 +74,14 @@ def assess(day: str = "") -> dict:
                 f"deeper fatigue than all but a tenth of the last year."
             )
         elif tsb <= bands["low"]:
-            verdict = _strictest(verdict, "easy_only")
-            reasons.append(f"TSB {tsb:+} sits in your fatigued band (below {bands['low']:+}).")
+            # Informational only. The bands are percentiles of a year with long
+            # idle gaps, so a steady four-sessions-a-week rhythm lives between
+            # deep_low and low (about -5 to -9 at CTL ~19). Vetoing here would
+            # cap every day of a consistent week at easy_only.
+            reasons.append(
+                f"TSB {tsb:+} sits in your fatigued band (below {bands['low']:+}) — "
+                f"normal for a consistent week, not a veto."
+            )
         elif tsb >= bands["high"]:
             verdict = _strictest(verdict, "can_push")
             reasons.append(f"TSB {tsb:+} is in your fresh band (above {bands['high']:+}).")
