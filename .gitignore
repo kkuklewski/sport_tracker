@@ -1,4 +1,6 @@
 activities.db
+activities.db.tmp
+reminders.db
 *:Zone.Identifier
 .claude/settings.local.json
 __pycache__/

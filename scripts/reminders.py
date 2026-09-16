@@ -10,22 +10,28 @@ The loop closes by itself: a planned slot becomes a reminder, and once Garmin
 syncs a matching activity that day the reminder is ticked off automatically.
 Nothing is ever completed by hand on either side.
 
+The plan database is a nightly mirror of the VPS (pull_db.py) and gets overwritten
+wholesale, so the reminder ids live in a separate local reminders.db instead.
+
 Usage:
     python3 scripts/reminders.py                    # sync the next 21 days
     python3 scripts/reminders.py --dry-run          # show what would change
     python3 scripts/reminders.py --list "Sport Activity" --time 17:00
 """
 import argparse
+import sqlite3
 import subprocess
 import sys
 from datetime import date as _date
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from db import ROOT
 from plan import get_plan_connection, plan_with_status
 
 DEFAULT_LIST = "Sport Activity"
 DEFAULT_TIME = "17:00"
+LINKS_PATH = ROOT / "reminders.db"
 
 # A reminder alerting at the same hour every time is easy to ignore, but the
 # plan is day-resolution, so one configurable default time is all there is.
@@ -34,6 +40,31 @@ SESSION_LABEL = {
     "running": "Run",
     "mobility": "Mobility",
 }
+
+
+def get_links_connection():
+    """{(date, session_type) -> reminder id}, kept apart from the mirrored plan."""
+    conn = sqlite3.connect(LINKS_PATH)
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS reminder_links (
+            date TEXT NOT NULL,
+            session_type TEXT NOT NULL,
+            reminder_id TEXT NOT NULL,
+            PRIMARY KEY (date, session_type)
+        )
+        """
+    )
+    return conn
+
+
+def _load_links(conn) -> dict:
+    return {
+        (day, session_type): reminder_id
+        for day, session_type, reminder_id in conn.execute(
+            "SELECT date, session_type, reminder_id FROM reminder_links"
+        )
+    }
 
 
 def _escape(text: str) -> str:
@@ -140,14 +171,9 @@ def prune(list_name=DEFAULT_LIST, dry_run=False) -> list:
     still the user's data, and silently deleting it would be indistinguishable
     from the bridge losing track of the plan.
     """
-    conn = get_plan_connection()
-    owned = {
-        row[0]
-        for row in conn.execute(
-            "SELECT reminder_id FROM planned_sessions WHERE reminder_id IS NOT NULL"
-        )
-    }
-    conn.close()
+    links = get_links_connection()
+    owned = set(_load_links(links).values())
+    links.close()
 
     today = _date.today().isoformat()
     stale = [
@@ -262,16 +288,22 @@ def sync(list_name=DEFAULT_LIST, due_time=DEFAULT_TIME, days_ahead=21,
     # its reminder ticked off rather than lingering unchecked on the phone.
     start = _date.fromordinal(today.toordinal() - 7)
     plan = plan_with_status(conn, start.isoformat(), end.isoformat())
+    slots = set(conn.execute("SELECT date, session_type FROM planned_sessions"))
+    conn.close()
+
+    links_conn = get_links_connection()
+    links = _load_links(links_conn)
 
     live = fetch_reminders(list_name)
-    deletions = [
-        row[0] for row in conn.execute("SELECT reminder_id FROM retired_reminders")
-        if row[0] in live
-    ]
+    # A link whose slot is gone from the plan is a cancelled session: its
+    # reminder comes off the phone, and the link goes either way.
+    retired = [key for key in links if key not in slots]
+    deletions = [links[key] for key in retired if links[key] in live]
 
     creates, updates, completes = [], [], []
     for entry in plan:
-        reminder_id = entry.get("reminder_id")
+        reminder_id = links.get((entry["date"], entry["session_type"]))
+        entry["reminder_id"] = reminder_id
         linked = reminder_id in live if reminder_id else False
         if entry["status"] == "done":
             # Past slots that were never pushed stay unpushed — creating a
@@ -292,30 +324,28 @@ def sync(list_name=DEFAULT_LIST, due_time=DEFAULT_TIME, days_ahead=21,
         "completed": [title_for(e) for e in completes],
         "deleted": len(deletions),
     }
-    if dry_run or not (creates or updates or completes or deletions):
-        conn.close()
+    if dry_run or not (creates or updates or completes or deletions or retired):
+        links_conn.close()
         return report
 
     output = _run_applescript(
         build_script(list_name, hour, minute, creates, updates, completes, deletions)
     )
-    cur = conn.cursor()
+    cur = links_conn.cursor()
     for line in output.splitlines():
         if not line.strip():
             continue
         day, session_type, reminder_id = line.split("\t")
         cur.execute(
-            "UPDATE planned_sessions SET reminder_id = ? "
-            "WHERE date = ? AND session_type = ?",
-            (reminder_id, day, session_type),
+            "INSERT OR REPLACE INTO reminder_links (date, session_type, reminder_id) "
+            "VALUES (?, ?, ?)",
+            (day, session_type, reminder_id),
         )
-    if deletions:
-        cur.executemany(
-            "DELETE FROM retired_reminders WHERE reminder_id = ?",
-            [(r,) for r in deletions],
-        )
-    conn.commit()
-    conn.close()
+    cur.executemany(
+        "DELETE FROM reminder_links WHERE date = ? AND session_type = ?", retired
+    )
+    links_conn.commit()
+    links_conn.close()
     return report
 
 

@@ -16,12 +16,14 @@ Both paths share `scripts/db.py`, which formats and dedupes identically on `(dat
 `get_training_load`, `get_load_series`, `get_wellness`, `assess_today`; a background thread also syncs
 every 6 h.
 
-Auth is the URL itself — the endpoint is `https://sport-tracker.146.59.127.12.sslip.io/<MCP_PATH_SECRET>/mcp` (secret set in Coolify env vars; never commit it). `GOALS.md` is baked into the image, so goal edits reach the VPS via commit + push + Coolify redeploy. The local Mac workflow below is independent of the VPS deployment — two DBs,
-same dedup logic. The VPS syncs activities and wellness for itself, so
-`get_training_load` and `assess_today` work identically there, but
-`planned_sessions` exists only where a plan was written: plan on the Mac and
-the phone's `assess_today` reports no slot for today, because the row is not
-in its database.
+Auth is the URL itself — the endpoint is `https://sport-tracker.146.59.127.12.sslip.io/<MCP_PATH_SECRET>/mcp` (secret set in Coolify env vars; never commit it). `GOALS.md` is baked into the image, so goal edits reach the VPS via commit + push + Coolify redeploy.
+
+**The VPS database is canonical.** The container syncs activities and
+wellness for itself, and every plan written through the connector lands
+there. The Mac's `activities.db` is a nightly mirror of it (`scripts/pull_db.py`),
+overwritten wholesale — the Mac exists in this pipeline only because it is the
+one machine that can write Apple Reminders. Claude Code on the Mac has the same
+connector loaded, so `plan_sessions` there writes to the VPS too.
 
 ## Deploying to the VPS
 
@@ -67,15 +69,27 @@ Verifying a deploy is real means checking the tools over the wire, not just
 that the container restarted: MCP needs an `initialize` handshake before
 `tools/list`, so a bare POST correctly answers 400.
 
+`pull_db.py` resolves the running container by the app UUID on every run, so
+a redeploy needs no change on the Mac.
+
 ## Workflow — always do this first
 
-Refresh the database **before** answering any training question:
+Refresh the mirror **before** answering any training question:
 
 ```
-.venv/bin/python scripts/garmin_sync.py --days 30
+.venv/bin/python scripts/pull_db.py            # sync Garmin on the VPS, then copy its DB here
+.venv/bin/python scripts/pull_db.py --no-sync  # just copy
 ```
 
-If that fails with an auth error, the cached token expired — run `--login` once interactively to answer the MFA prompt, then retry. If Garmin is unreachable, fall back to the CSV path and say so rather than answering from stale data.
+It runs `garmin_sync.py` and `wellness.py` inside the container first, so the
+copy reflects today's session rather than the last 6-hourly background cycle,
+then replaces the local file atomically (a copy that does not open as a
+database is discarded and the old mirror kept). If the VPS is unreachable,
+`garmin_sync.py --days 30` locally still works as a fallback — it writes to
+the mirror, which the next pull overwrites, and the VPS gets the same rows from
+Garmin itself, so nothing is lost. Say so rather than answering from stale data.
+
+If a sync fails with an auth error, the cached token expired — on the Mac run `--login` once interactively to answer the MFA prompt; on the VPS the login is credential-only from `GARMIN_EMAIL`/`GARMIN_PASSWORD` in the Coolify env.
 
 **Never loop or retry logins.** Garmin IP-rate-limits the SSO endpoint and returns 429 (this already happens on a normal first login; the library recovers via a fallback strategy). Normal runs reuse the cached token in `~/.garminconnect` and never hit SSO at all — keep it that way.
 
@@ -116,9 +130,10 @@ intended.
 - The plan is data, `GOALS.md` is intent. Keep the weekly structure and
   progression in `GOALS.md`; keep concrete dated slots in the table.
 
-The local `activities.db` and the VPS one are separate files, so a plan written
-locally is not visible to the remote MCP server, and vice versa. Plan on
-whichever surface you will actually be reading it from.
+**Plan only through the MCP connector** (`plan_sessions` /
+`cancel_planned_session`), from the phone or from Claude Code — both hit the
+VPS. A row written into the local `planned_sessions` by hand disappears on the
+next pull, because the local file is a mirror.
 
 ## Load and readiness
 
@@ -188,19 +203,23 @@ against the Reminders app on this Mac.
   user's data, and deleting them silently would look exactly like the bridge
   losing the plan. Undated reminders are left alone, being hand-typed rather
   than stranded slots.
-- `planned_sessions.reminder_id` is the link, deliberately excluded from the
-  upsert's update set so replanning a slot reuses its reminder. Deleting a slot
-  parks the id in `retired_reminders` until the next pass can delete it for
-  real.
+- The link `(date, session_type) -> reminder_id` lives in a separate local
+  `reminders.db` (gitignored), **not** in `activities.db` — that file is
+  overwritten by every pull and would take the ids with it. Retirement is
+  derived, like status: a link whose slot no longer exists in `planned_sessions`
+  is a cancelled session, so its reminder is deleted and the link dropped.
+  Replanning a slot keeps its key and therefore its reminder.
 
-`scripts/daily.sh` chains sync then reminders, in that order, and continues
-past a failed Garmin sync so the plan still reaches the phone.
+`scripts/daily.sh` chains pull then reminders, in that order, and continues
+past a failed pull so the plan still reaches the phone from the last mirror.
 `scripts/com.easecrafted.sport-tracker.plist` runs it nightly at 21:30 —
-copy it to `~/Library/LaunchAgents/` and `launchctl load` it to enable.
+copy it to `~/Library/LaunchAgents/` and `launchctl load` it to enable. It
+needs `ssh vps-jarvis` to work unattended; the launchd agent inherits the same
+`SSH_AUTH_SOCK` as the shell.
 
-**Only this Mac can write Reminders.** The VPS has no Reminders app, so a
-session planned from the phone through the remote MCP connector lands in the
-VPS database and never becomes a reminder. Plan on the Mac, or accept the gap.
+**Only this Mac can write Reminders.** The VPS has no Reminders app, which is
+the whole reason the mirror exists: a session planned from the phone reaches
+the VPS immediately and the phone's reminder list at the next nightly pull.
 
 ## Answering "what should I train today"
 
