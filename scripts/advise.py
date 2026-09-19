@@ -19,7 +19,7 @@ from datetime import date
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from load import current
+from load import DETRAINED_FRACTION, current
 from plan import get_plan_connection, plan_with_status
 
 # Ordered from most to least restrictive; the final verdict is the strictest
@@ -87,8 +87,25 @@ def assess(day: str = "") -> dict:
             # than lowering it, so it cannot go through _strictest, which would
             # always keep as_planned. It runs before every veto below, so any
             # of them still pulls the verdict back down.
-            verdict = "can_push"
-            reasons.append(f"TSB {tsb:+} is in your fresh band (above {bands['high']:+}).")
+            #
+            # A layoff decays CTL and ATL alike, so TSB climbs into this band
+            # precisely when there is no fitness left to spend: 65 of the 93
+            # can_push days in this athlete's history were issued while CTL sat
+            # below DETRAINED_FRACTION of its own 90-day peak, 2026-09-02 among
+            # them. Freshness only earns a higher ceiling on top of fitness.
+            fraction = load.get("ctl_fraction_of_peak")
+            if fraction is not None and fraction < DETRAINED_FRACTION:
+                reasons.append(
+                    f"TSB {tsb:+} is in your fresh band, but CTL {load.get('ctl')} is "
+                    f"only {fraction:.0%} of its 90-day peak ({load.get('ctl_peak_90d')}) "
+                    f"— that is detrained, not rested. Rebuild before pushing."
+                )
+            else:
+                verdict = "can_push"
+                reasons.append(
+                    f"TSB {tsb:+} is in your fresh band (above {bands['high']:+}), "
+                    f"on CTL {load.get('ctl')} at {fraction:.0%} of its 90-day peak."
+                )
 
     ramp = load.get("ctl_change_7d")
     if ramp is not None and ramp > SAFE_CTL_RAMP:

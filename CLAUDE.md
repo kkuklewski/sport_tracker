@@ -159,10 +159,29 @@ morning, and `scripts/advise.py` combines all three into one verdict.
 - `CTL` is a 42-day and `ATL` a 7-day exponential average of daily TRIMP;
   `TSB = CTL - ATL` uses the *previous* day's values, since form is what you
   woke up with, before today's session counts against it.
-- **TSB bands are calibrated per-athlete.** Textbook cycling bands assume a
-  CTL of 60–100; peak here is ~24, so `calibrated_bands()` reads TSB
-  percentiles from this athlete's own last year instead. Compare against
+- **Not every logged session is training stress.** TRIMP reads minutes above
+  resting, so it scored a 47-minute mobility session at 20 and a two-hour
+  holiday walk at 49 — more than an 18 km ride. `session_weight()` applies
+  `MOBILITY_WEIGHT` / `WALKING_WEIGHT` (0.3) to mobility and Walking, keyed on
+  the *title* because `Other` also holds the four real "Kardio" sessions, which
+  keep full weight. This puts load.py on the same side of the line plan.py
+  already draws, where Walking completes no slot.
+- **TSB bands are calibrated per-athlete, over training days only.** Textbook
+  cycling bands assume a CTL of 60–100; peak here is ~24, so
+  `calibrated_bands()` reads TSB percentiles from this athlete's own last year
+  instead. It first drops days more than `TRAINING_NEIGHBOURHOOD` from any
+  session: 282 of the last 351 days were rest, with idle runs of 41, 36 and 27
+  days, so the unfiltered percentiles described detraining and flagged a tenth
+  of every year as "deeply fatigued" *by construction*. Compare against
   `bands`, never against remembered numbers.
+- **TSB cannot see detraining, so it must not grant `can_push` alone.** A
+  layoff decays CTL and ATL alike, so TSB climbs into the fresh band exactly
+  when there is no fitness to spend. On 2026-09-02, after 24 idle days, CTL was
+  5.3 and TSB +5.0 — can_push; the next day was 78 km off a 50 km lifetime max,
+  and days two and three of the tour collapsed. 65 of the 93 fresh-band days in
+  this history were issued while detrained. `advise.assess()` now requires CTL
+  at `DETRAINED_FRACTION` of its own 90-day peak before freshness raises the
+  ceiling. Vetoes still apply on top.
 - `wellness` is expensive — six endpoints per day — so stored days are skipped
   unless within `REFRESH_DAYS`, because Garmin keeps revising the last day or
   two as the watch uploads the rest of the night. A day where the watch was off

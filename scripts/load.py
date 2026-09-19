@@ -22,6 +22,7 @@ Usage:
 """
 import argparse
 import math
+import re
 import sys
 from datetime import date, timedelta
 from pathlib import Path
@@ -31,6 +32,27 @@ from db import get_connection, parse_number
 
 CTL_DAYS, ATL_DAYS = 42, 7
 FALLBACK_REST_HR, FALLBACK_MAX_HR = 60, 190
+
+# TRIMP reads a session as continuous aerobic work — minutes above resting,
+# weighted exponentially by intensity. That assumption fails where heart rate
+# is raised by being upright and moving rather than by training: a 47-minute
+# mobility session at 103 bpm scored 20, and a two-hour holiday walk at 99 bpm
+# scored 49, outscoring an 18 km gravel ride. Both fed ATL, and the verdict
+# read "deeply fatigued" on a day when every wellness signal was green.
+#
+# plan.py already draws this line — mobility completes a mobility slot, while
+# Walking and Multisport match nothing at all. These weights put load.py on the
+# same side of it, rather than counting as fatigue what the plan refuses to
+# count as training.
+MOBILITY_WEIGHT, WALKING_WEIGHT = 0.3, 0.3
+MOBILITY_TITLE = re.compile(r"mobility|pilates|stretch|yoga", re.IGNORECASE)
+
+# Days this far from a session are not evidence about training form, so they
+# are kept out of the band calibration below.
+TRAINING_NEIGHBOURHOOD = 3
+
+# CTL this far below its own 90-day peak means detrained, whatever TSB says.
+DETRAINED_FRACTION = 0.70
 
 
 def heart_rate_bounds(conn) -> tuple:
@@ -88,13 +110,29 @@ def trimp(avg_hr, minutes: float, rest_hr: int, max_hr: int) -> float:
     return minutes * reserve * 0.64 * math.exp(1.92 * reserve)
 
 
+def session_weight(activity_type: str, title: str) -> float:
+    """How much of a session's TRIMP is training stress the body pays off.
+
+    Keyed on the title rather than the type alone, because "Other" is the
+    watch's catch-all: it holds the mobility work *and* the four "Kardio"
+    sessions, which are real aerobic work and keep their full weight.
+    """
+    if activity_type == "Walking":
+        return WALKING_WEIGHT
+    if activity_type == "Other" and MOBILITY_TITLE.search(title or ""):
+        return MOBILITY_WEIGHT
+    return 1.0
+
+
 def daily_loads(conn, rest_hr: int, max_hr: int) -> dict:
     """{date: total TRIMP} — several sessions in a day sum into that day."""
     loads = {}
-    for day, duration, avg_hr in conn.execute(
-        "SELECT date, duration, avg_hr FROM activities ORDER BY date"
+    for day, duration, avg_hr, activity_type, title in conn.execute(
+        "SELECT date, duration, avg_hr, activity_type, title FROM activities "
+        "ORDER BY date"
     ):
         score = trimp(parse_number(avg_hr), duration_minutes(duration), rest_hr, max_hr)
+        score *= session_weight(activity_type, title)
         if score:
             loads[day[:10]] = loads.get(day[:10], 0.0) + score
     return loads
@@ -130,14 +168,31 @@ def series(conn, until: str = "") -> list:
     return out
 
 
+def _near_training(history: list, i: int) -> bool:
+    """Is day `i` within TRAINING_NEIGHBOURHOOD days of an actual session?"""
+    lo = max(0, i - TRAINING_NEIGHBOURHOOD)
+    hi = min(len(history), i + TRAINING_NEIGHBOURHOOD + 1)
+    return any(history[j]["load"] > 0 for j in range(lo, hi))
+
+
 def calibrated_bands(history: list) -> dict:
-    """TSB percentiles from this athlete's own last year.
+    """TSB percentiles from this athlete's own last year of *training* days.
 
     Cycling's usual -30/-10/+5/+25 bands assume a CTL of 60-100. Reading this
     athlete's own distribution keeps "buried" meaning buried *for them*.
+
+    Days more than TRAINING_NEIGHBOURHOOD from any session are dropped first.
+    Without that filter 282 of the last 351 days were rest — idle runs of 41,
+    36 and 27 days — so the percentiles described detraining, not training, and
+    a tenth of every year scored "deeply fatigued" by construction, whatever
+    the athlete did. The threshold moved with the athlete instead of anchoring
+    them, which is the opposite of what a threshold is for.
     """
+    start = max(0, len(history) - 365)
     values = sorted(
-        entry["tsb"] for entry in history[-365:] if entry["ctl"] > 1
+        entry["tsb"]
+        for i, entry in enumerate(history)
+        if i >= start and entry["ctl"] > 1 and _near_training(history, i)
     )
     if len(values) < 30:
         return {}
@@ -173,12 +228,21 @@ def current(conn) -> dict:
     else:
         state = "normal"
 
+    # TSB goes to zero after a layoff, because CTL and ATL both decay to zero —
+    # so it reads "fresh" at the exact moment the body is least prepared. On
+    # 2026-09-02, after 24 idle days, CTL was 5.3 and TSB +5.0: the fresh band,
+    # can_push. The next day was a 78 km ride off a 50 km lifetime maximum, and
+    # days two and three of the tour collapsed. CTL against its own recent peak
+    # is the number that could tell detrained from fit; TSB structurally cannot.
+    peak_90 = max(e["ctl"] for e in history[-90:])
     return {
         "date": today["date"],
         "ctl": today["ctl"], "atl": today["atl"], "tsb": tsb,
         "state": state,
         "bands": bands,
         "ctl_change_7d": ramp,
+        "ctl_peak_90d": round(peak_90, 1),
+        "ctl_fraction_of_peak": round(today["ctl"] / peak_90, 2) if peak_90 else None,
         "load_last_7d": round(week),
         "load_prior_7d": round(prior_week),
         "peak_ctl": max(e["ctl"] for e in history),
